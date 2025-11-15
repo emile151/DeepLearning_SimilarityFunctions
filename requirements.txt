@@ -1,0 +1,9 @@
+ipywidgets
+rich
+seaborn
+torch
+datasets
+transformers
+tokenizers
+sentencepiece
+sacremoses
