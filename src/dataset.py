@@ -1,21 +1,52 @@
 import pandas as pd
+import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 
 class SignalPeptides(Dataset):
-    def __init__(self, path_to_dataset):
-        self.data = create_pandas_df_from_path(path_to_dataset)
-        self.path_to_dataset = path_to_dataset
+    def __init__(self, data, max_len):
+        self.data = data.reset_index(drop=True)
+        self.seqs = self.data['sequence']
+        self.labels = self.data['class_ints']
+        self.max_len = max_len
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data.iloc[idx,4],self.data.iloc[idx,3]
+        seq = self.seqs.iloc[idx]
+        label = self.labels.iloc[idx]
+        aas = ["[CLS]","[PAD]","A","R","N","D","C","E","Q","G","H","I","L","K","M","F","P","S","T","W","Y","V","B","Z","X","U"]
+        vocab = {aa: idx for idx, aa in enumerate(aas)}
+        # tokenize sequence
+        token_seq = [vocab["[PAD]"]] * self.max_len
+        token_seq[0] = vocab["[CLS]"]
 
+        for pos, aa in enumerate(seq[:self.max_len-1], start=1):
+            token_seq[pos] = vocab.get(aa, vocab["X"])
 
-def create_pandas_df_from_path(path_to_dataset):
+        # convert to tensor
+        token_seq = torch.tensor(token_seq, dtype=torch.long)
+        label = torch.tensor(label, dtype=torch.float)  # or long for classification
+
+        return token_seq, label
+
+def tokenize(seqs, max_len):
+    aas = ["[CLS]","[PAD]","A","R","N","D","C","E","Q","G","H","I","L","K","M","F","P","S","T","W","Y","V","B","Z","X","U"]
+    vocab = {aa: idx for idx, aa in enumerate(aas)}
+    tokenized_seqs = []
+    for seq in seqs:
+        token_seq = [vocab['[PAD]']] * max_len
+        token_seq[0] = vocab['[CLS]']
+        pos = 1
+        for aa in seq:
+            token_seq[pos] = vocab[aa]
+            pos += 1
+        tokenized_seqs.append(torch.tensor(token_seq))
+    return tokenized_seqs
+
+def create_pandas_df_from_path(path_to_dataset, max_len):
     data_lines = open(path_to_dataset, "r")
     ids = []
     domain = []
@@ -30,33 +61,37 @@ def create_pandas_df_from_path(path_to_dataset):
             domain.append(split[1])
             class_nam.append(split[2][:-2])
         elif c % 3 == 1:
-            sequence.append(line)
+            sequence.append(line[:-2])
         else:
-            cell_location.append(line)
+            cell_location.append(line[:-2])
         c += 1
     
     unique_classes = sorted(set(class_nam))
     class_to_idx = {cls: i for i, cls in enumerate(unique_classes)}
-    int_labels = [class_to_idx[nam] for nam in class_nam]
-
+    int_labels = [torch.tensor(class_to_idx[nam]) for nam in class_nam]
+    #tokenized_seqs = tokenize(sequence, max_len)
     data = pd.DataFrame({
         "id" : ids,
         "domain" : domain,
         "class" : class_nam,
         "class_ints" : int_labels,
         "sequence" : sequence,
+        #"tokenized_seqs": tokenized_seqs,
         "cell_location" : cell_location
     })
     return data
 
-def get_dataloaders(path_to_data, batch_size = 32):
-    data = create_pandas_df_from_path(path_to_data)
+def get_dataloaders(path_to_data, batch_size = 32, max_len = 72):
+    data = create_pandas_df_from_path(path_to_data, max_len)
     train_df, test_df = train_test_split(
         data, 
         test_size=0.2, 
         shuffle=True, 
         random_state=42
     )
-    train_dataloader = DataLoader(train_df, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_df, batch_size=batch_size, shuffle=True)
+    train_set = SignalPeptides(train_df, max_len)
+    test_set = SignalPeptides(test_df, max_len)
+    train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_set, batch_size=batch_size, shuffle=True)
     return train_dataloader, test_dataloader
+    
