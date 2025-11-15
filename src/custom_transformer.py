@@ -21,7 +21,7 @@ def attention(query, key, value, mask=None, dropout=None):
 # Multi-Head Attention
 # ----------------------------
 class MultiHeadedAttention(nn.Module):
-    def __init__(self, h, d_model, dropout=0.1):
+    def __init__(self, h, d_model, attention_fn, dropout=0.1):
         super().__init__()
         assert d_model % h == 0, "Embedding dim must be divisible by number of heads"
         self.d_k = d_model // h
@@ -29,6 +29,7 @@ class MultiHeadedAttention(nn.Module):
         self.linears = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(4)])
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
+        self.attention_fn = attention_fn
 
     def forward(self, query, key, value, mask=None):
         B = query.size(0)
@@ -46,7 +47,7 @@ class MultiHeadedAttention(nn.Module):
         ]
 
         # Apply attention
-        x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
+        x, self.attn = self.attention_fn(query, key, value, mask=mask, dropout=self.dropout)
 
         # Concatenate heads
         x = x.transpose(1, 2).contiguous().view(B, -1, self.h * self.d_k)
@@ -56,12 +57,12 @@ class MultiHeadedAttention(nn.Module):
 # Small Transformer
 # ----------------------------
 class SmallTransformer(nn.Module):
-    def __init__(self, vocab_size, embed_dim=24, num_heads=4, depth=2, max_len=64):
+    def __init__(self, vocab_size, attention_fn, embed_dim=24, num_heads=4, depth=2, max_len=64):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
         self.pos_emb = nn.Parameter(torch.randn(1, max_len, embed_dim) * 0.01)
         self.blocks = nn.ModuleList([
-            MultiHeadedAttention(num_heads, embed_dim)
+            MultiHeadedAttention(num_heads, embed_dim, attention_fn)
             for _ in range(depth)
         ])
         self.ln = nn.LayerNorm(embed_dim)
@@ -93,7 +94,8 @@ def main():
         embed_dim=EMBED_DIM,
         num_heads=NUM_HEADS,
         depth=LAYER,
-        max_len=MAX_SEQ_LENGTH
+        max_len=MAX_SEQ_LENGTH,
+        attention_fn=attention
     )
 
     # Example input
