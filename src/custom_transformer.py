@@ -66,7 +66,7 @@ class SmallTransformer(nn.Module):
             for _ in range(depth)
         ])
         self.ln = nn.LayerNorm(embed_dim)
-        self.head = nn.Linear(embed_dim, vocab_size)
+        self.head = nn.Linear(embed_dim, embed_dim)
 
     def forward(self, tokens, mask=None):
         B, T = tokens.shape
