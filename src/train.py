@@ -111,8 +111,6 @@ def compute_mcc(pred_logits, targets):
     return matthews_corrcoef(y, pred_labels)
 
 def eval(preds, targets):
-    print("Preds", preds)
-    print("targets", targets)
     preds = F.softmax(preds, dim=1)
     auroc = compute_auroc(preds, targets)
     auprc = compute_auprc(preds, targets)

@@ -28,7 +28,7 @@ def main():
         "Classifier" : classifier.LinearClassifier,
         "loss" : F.cross_entropy,
         "optimizer" : torch.optim.Adam,
-        "num_epochs" : 1,
+        "num_epochs" : 10,
         "device" : device,
         "output_dir" : "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results/",
         "experiment_title" : "test"
