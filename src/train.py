@@ -1,87 +1,163 @@
-import math
+import os
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pdb
-import numpy as np
+from tqdm import tqdm
+from dataset import get_dataloaders
+from sklearn.metrics import roc_auc_score, average_precision_score, matthews_corrcoef
 
-import sys
-sys.path.append("src")
-
-import dataset
 import custom_transformer
-import classifier
 
-
-path_to_data = "data/complete_set_unpartitioned.fasta"
-max_len = 72
-batch_size = 32
-vocab_size = 25
-num_classes = 6
-attention_fn = custom_transformer.attention
-num_heads = 4
-num_layers = 2
-embed_dim = 24
-dropout = 0
-
-train_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, max_len)
 
 
 
 class SignalP(nn.Module):
-    def __init__(self,  max_len, vocab_size, num_classes, attention_fn, num_heads, num_layers, embed_dim, dropout):
+    def __init__(self,  args):
         super().__init__()
-        self.max_len = max_len
-        self.vocab_size = vocab_size
-        self.num_classes = num_classes
-        self.attention_fn = attention_fn
-        self.num_heads = num_heads
-        self.num_layers = num_layers
-        self.embed_dim = embed_dim
-        self.dropout = dropout
-        self.transformer = custom_transformer.SmallTransformer(vocab_size = vocab_size,
-                                                               attention_fn = attention_fn,
-                                                                embed_dim = embed_dim, 
-                                                                num_heads = num_heads,
-                                                                depth = num_layers, 
-                                                                max_len = max_len)
-        self.classifier = classifier.LinearClassifier(embed_dim, num_classes)
+        self.args = args
+        self.transformer = custom_transformer.SmallTransformer(vocab_size = args.vocab_size,
+                                                               attention_fn = args.attention_fn,
+                                                                embed_dim = args.embed_dim, 
+                                                                num_heads = args.num_heads,
+                                                                depth = args.num_layers, 
+                                                                max_len = args.max_len)
+        self.classifier = args.Classifier(args)
         
     def forward(self, tokens):
         x = self.transformer(tokens)
-        print("X: ", x.shape)
-
         clf_x = x[:,0,:]
-        print("X: ", clf_x.shape)
         logits = self.classifier(clf_x)
         return logits
+    def forward_encode(self, tokens):
+        x = self.transformer(tokens)
+        return x
+
+def run_epoch(model, data_loader, mode, args):
+    loss_fn = args.loss
+    optimizer = args.optimizer(model.parameters(), lr=1e-3)
+    tqdm_bar = tqdm(data_loader, total=len(data_loader))
+
+    if mode == 'Train':
+        model.train()
+    else:
+        model.eval()
+    batch_loss = 0
+    i = 0
+    preds = []
+    targets = []
+    losses = []
+    for batch, (inputs, batch_targets) in enumerate(data_loader):
+        inputs, batch_targets = inputs.to(args.device), batch_targets.to(args.device)
+        batch_preds = model(inputs)
+        loss = loss_fn(batch_preds, batch_targets)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        batch_loss += loss.item()
+        losses.append(loss.item())
+        preds.append(batch_preds.detach().cpu())
+        targets.append(batch_targets.detach().cpu())
+        tqdm_bar.update()
+
+    return torch.cat(preds, dim=0), torch.cat(targets, dim=0), np.mean(losses)
+
+def to_numpy(x):
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy()
+    return x
 
 
+def compute_auroc(pred_logits, targets):
+    """
+    pred_logits: (B, C) raw logits
+    targets: (B,) integer class labels
+    """
 
+    pred = to_numpy(pred_logits)
+    y = to_numpy(targets)
 
+    # Multiclass: pass multi_class="ovr"
+    if pred.shape[1] > 2:
+        return roc_auc_score(y, pred, multi_class="ovr")
+    else:
+        # Binary: take probability of class 1
+        probs = pred[:, 1]
+        return roc_auc_score(y, probs)
 
+def compute_auprc(pred_logits, targets):
+    pred = to_numpy(pred_logits)
+    y = to_numpy(targets)
 
-model = SignalP(max_len = max_len, vocab_size = vocab_size, num_classes = num_classes, attention_fn = attention_fn, num_heads = num_heads, num_layers = num_layers, embed_dim = embed_dim, dropout = dropout)
-loss_fn = F.cross_entropy
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-model.train()
+    C = pred.shape[1]
 
+    # Multiclass → compute AUPRC for each class (one-vs-rest)
+    if C > 2:
+        scores = []
+        for c in range(C):
+            y_bin = (y == c).astype(int)
+            scores.append(average_precision_score(y_bin, pred[:, c]))
+        return np.mean(scores)
 
-running_loss = 0.0
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-for batch, (inputs, targets) in enumerate(train_dataloader):
-    inputs, targets = inputs.to(device), targets.to(device)
-    print("input shape", inputs.shape)
-    print("input shape", inputs.shape)
-    preds = model(inputs)
-    print(preds.shape)
-    loss = loss_fn(preds, targets)
-    print("loss", loss)
-    # Backprop
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    # Binary
+    probs = pred[:, 1]
+    return average_precision_score(y, probs)
 
-    running_loss += loss.item()
+def compute_mcc(pred_logits, targets):
+    pred = to_numpy(pred_logits)
+    y = to_numpy(targets)
+    pred_labels = np.argmax(pred, axis=1)
 
-    avg_loss = running_loss / len(train_dataloader)
+    return matthews_corrcoef(y, pred_labels)
+
+def eval(preds, targets):
+    print("Preds", preds)
+    print("targets", targets)
+    preds = F.softmax(preds, dim=1)
+    auroc = compute_auroc(preds, targets)
+    auprc = compute_auprc(preds, targets)
+    mcc = compute_mcc(preds, targets)
+
+    metrics = {
+        "auroc" : auroc,
+        "auprc" : auprc,
+        "mcc"   : mcc
+    }
+    return metrics
+
+def train_model(train_dataloader, dev_dataloader, args):
+    model = SignalP(args)
+    path_to_model = args.output_dir + args.experiment_title + ".pth"
+    print("Model will be saved at: ", path_to_model)
+    evals = {
+        "Train" : [],
+        "Dev" : [],
+        "loss" : []
+    }
+
+    for epoch in range(args.num_epochs):
+        print("Epoch = ", str(epoch + 1))
+        for mode, data_loader in [('Train', train_dataloader),('Dev', dev_dataloader)]:
+            print(mode, " for epoch ", str(epoch + 1))
+            preds, targets, loss = run_epoch(model, data_loader, mode, args)
+            epoch_eval = eval(preds, targets )
+            evals[mode].append(epoch_eval)
+            if mode == 'Train': 
+                evals["loss"].append(loss.item())
+            print("AUROC at epoch ", str(epoch + 1), " = ", epoch_eval["auroc"])
+            print("AUPRC at epoch ", str(epoch + 1), " = ", epoch_eval["auprc"])
+            print("MCC at epoch ", str(epoch + 1), " = ", epoch_eval["mcc"])
+            print("Loss at epoch ", str(epoch + 1), " = ", loss)
+            print("--------------------------------------------------------------------------")
+        torch.save(model, path_to_model)
+    return model, evals
+
+def test_model(model, test_dataloader, args):
+    preds, targets, loss = run_epoch(model, test_dataloader, 'Test', args)
+    test_eval = eval(preds, targets)
+    print("Test AUROC at epoch " , test_eval["auroc"])
+    print("AUPRC at epoch ", test_eval["auprc"])
+    print("MCC at epoch ", test_eval["mcc"])
+    print("Loss at epoch ", loss)
+    print("--------------------------------------------------------------------------")
+    return preds, targets

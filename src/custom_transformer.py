@@ -25,11 +25,17 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
         # Custom Attention function
+        """
+        if else statement ? Was verwendet or wenn beides gegeben wird ? 
+        """
         self.attn_fn = attn_fn or self.dot_prod_attention
 
     def dot_prod_attention(self, query, key, value, mask , dropout=None):
         d_k = query.size(-1)
-        
+        """
+        QUESTIONS: 
+        d_k = dimension per head ? 
+        """
         scores = query @ key.transpose(-2, -1) / math.sqrt(d_k)
         if mask is not None:
             scores = scores.masked_fill(mask == 0, float('-inf'))
@@ -51,7 +57,7 @@ class MultiHeadedAttention(nn.Module):
         K = K.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
         V = V.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
 
-        print(f"[DEBUG] query, Q is {Q} with shape {Q.shape}")
+        #print(f"[DEBUG] query, Q is {Q} with shape {Q.shape}")
         scores = self.attn_fn(query = Q, key = K, value = V, mask = mask)
 
         out = scores.transpose(1, 2).reshape(B, T, D)

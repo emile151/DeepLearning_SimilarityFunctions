@@ -87,13 +87,23 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72):
     data = create_pandas_df_from_path(path_to_data, max_len)
     train_df, test_df = train_test_split(
         data, 
-        test_size=0.2, 
+        test_size=0.15, 
         shuffle=True, 
         random_state=42
     )
+    dev_rel = 0.15 / 0.85
+    train_df, dev_df = train_test_split(
+        train_df, 
+        test_size=dev_rel, 
+        shuffle=True, 
+        random_state=42
+    )
+
     train_set = SignalPeptides(train_df, max_len)
+    dev_set = SignalPeptides(dev_df, max_len)
     test_set = SignalPeptides(test_df, max_len)
     train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_set, batch_size=batch_size, shuffle=True)
-    return train_dataloader, test_dataloader
+    dev_dataloader = DataLoader(dev_set, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_set, batch_size=batch_size, shuffle=True)    
+    return train_dataloader,dev_dataloader, test_dataloader
     
