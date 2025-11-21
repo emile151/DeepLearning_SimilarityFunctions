@@ -28,7 +28,7 @@ class SignalPeptides(Dataset):
 
         # convert to tensor
         token_seq = torch.tensor(token_seq, dtype=torch.long)
-        label = torch.tensor(label, dtype=torch.float)  # or long for classification
+        label = torch.tensor(label, dtype=torch.long)
 
         return token_seq, label
 
@@ -68,7 +68,9 @@ def create_pandas_df_from_path(path_to_dataset, max_len):
     
     unique_classes = sorted(set(class_nam))
     class_to_idx = {cls: i for i, cls in enumerate(unique_classes)}
+    print("class_to_idx", class_to_idx)
     int_labels = [torch.tensor(class_to_idx[nam]) for nam in class_nam]
+    print("int_labels", int_labels)
     #tokenized_seqs = tokenize(sequence, max_len)
     data = pd.DataFrame({
         "id" : ids,
