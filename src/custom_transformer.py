@@ -4,86 +4,139 @@ import torch.nn.functional as F
 import math
 
 # ----------------------------
-# Attention function
-# ----------------------------
-def attention(query, key, value, mask=None, dropout=None):
-    """Compute 'Scaled Dot Product Attention'"""
-    d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
-    if mask is not None:
-        scores = scores.masked_fill(mask == 0, float('-inf'))
-    p_attn = F.softmax(scores, dim=-1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
-    return torch.matmul(p_attn, value), p_attn
-
-# ----------------------------
 # Multi-Head Attention
 # ----------------------------
 class MultiHeadedAttention(nn.Module):
-    def __init__(self, h, d_model, attention_fn, dropout=0.1):
+    def __init__(self, d_model, num_heads, attn_fn=None, dropout=0.1):
         super().__init__()
-        assert d_model % h == 0, "Embedding dim must be divisible by number of heads"
-        self.d_k = d_model // h
-        self.h = h
-        self.linears = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(4)])
-        self.attn = None
+        assert d_model % num_heads == 0, "Embedding dim must be divisible by number of heads"
+        
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_head = d_model // num_heads
+
+        # Linear projections
+        self.Wq = nn.Linear(d_model, d_model)
+        self.Wk = nn.Linear(d_model, d_model)
+        self.Wv = nn.Linear(d_model, d_model)
+        self.Wo = nn.Linear(d_model, d_model)
+
+        # Dropout
         self.dropout = nn.Dropout(p=dropout)
-        self.attention_fn = attention_fn
+
+        # Custom Attention function
+        self.attn_fn = attn_fn or self.dot_prod_attention
+
+    def dot_prod_attention(self, query, key, value, mask , dropout=None):
+        d_k = query.size(-1)
+        
+        scores = query @ key.transpose(-2, -1) / math.sqrt(d_k)
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, float('-inf'))
+        
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
+        out = attn_weights @ value
+        return out
 
     def forward(self, query, key, value, mask=None):
-        B = query.size(0)
+        B, T, D = query.shape
 
-        if mask is not None:
-            # mask is already (B,1,1,T)
-            # do NOT unsqueeze again
-            pass
+        Q = self.Wq(query)
+        K = self.Wk(key)
+        V = self.Wv(value)
 
+        Q = Q.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
+        K = K.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
+        V = V.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
 
-        # Linear projections and reshape to (B, h, T, d_k)
-        query, key, value = [
-            l(x).view(B, -1, self.h, self.d_k).transpose(1, 2)
-            for l, x in zip(self.linears, (query, key, value))
-        ]
+        print(f"[DEBUG] query, Q is {Q} with shape {Q.shape}")
+        scores = self.attn_fn(query = Q, key = K, value = V, mask = mask)
 
-        # Apply attention
-        x, self.attn = self.attention_fn(query, key, value, mask=mask, dropout=self.dropout)
+        out = scores.transpose(1, 2).reshape(B, T, D)
 
-        # Concatenate heads
-        x = x.transpose(1, 2).contiguous().view(B, -1, self.h * self.d_k)
-        return self.linears[-1](x)
+        out = self.Wo(out)
+
+        return out
+
+# ----------------------------
+# Transformer Encoder Block
+# ----------------------------
+class TransformerEncoderBlock(nn.Module):
+    def __init__(self, emb_dim, num_heads, dim_ff, attn_func, dropout=0.1):
+        super().__init__()
+
+        # 1. Multi-head self-attention block
+        self.self_attn = MultiHeadedAttention(emb_dim, num_heads, attn_fn=attn_func)
+
+        # 2. Feed-forward network
+        self.ffn = nn.Sequential(
+            nn.Linear(emb_dim, dim_ff),
+            nn.ReLU(),
+            nn.Linear(dim_ff, emb_dim)
+        )
+
+        # 3. Normalization layer
+        self.norm1 = nn.LayerNorm(emb_dim)
+        self.norm2 = nn.LayerNorm(emb_dim)
+
+        # 4. Dropout layer
+        self.dropout = nn.Dropout()
+
+    def forward(self, x, mask=None):
+        # 1. Self-attention + residual + norm
+        # 1.1 calculate self-attention
+        attn_out = self.self_attn(x, x, x, mask)
+        # 1.2 residual
+        x = x + self.dropout(attn_out)
+        # 1.3 normilzation
+        x = self.norm1(x)
+
+        # 2. Feed-formward + residual + norm
+        # 2.1 Feed-forward
+        ffn_out = self.ffn(x)
+        # 2.2 residual
+        x = x + self.dropout(ffn_out)
+        # 2.3 normilization
+        x = self.norm2(x)
+
+        return(x)
 
 # ----------------------------
 # Small Transformer
 # ----------------------------
 class SmallTransformer(nn.Module):
-    def __init__(self, vocab_size, attention_fn, embed_dim=24, num_heads=4, depth=2, max_len=64):
+    def __init__(self, vocab_size, attention_fn=None, embed_dim=128, num_heads=4, depth=4, max_len=128):
         super().__init__()
+        # Create internal learnable representation of input data
+        # embed is a lookup table for each input
         self.embed = nn.Embedding(vocab_size, embed_dim)
+        # pos_emb is a learnable matrix of positional encoding
+        # matrix is random initialzed with small numbers to not overwhelm in the beginning
         self.pos_emb = nn.Parameter(torch.randn(1, max_len, embed_dim) * 0.01)
+
+        # Create a stack of encoder layers (depth times)
         self.blocks = nn.ModuleList([
-            MultiHeadedAttention(num_heads, embed_dim, attention_fn)
+            TransformerEncoderBlock(embed_dim, num_heads, 4 * embed_dim, attention_fn)
             for _ in range(depth)
         ])
-        self.ln = nn.LayerNorm(embed_dim)
-        self.head = nn.Linear(embed_dim, vocab_size)
 
     def forward(self, tokens, mask=None):
         B, T = tokens.shape
         x = self.embed(tokens) + self.pos_emb[:, :T, :]
-
+ 
         for blk in self.blocks:
-            x = blk(x, x, x, mask=mask)
+            x = blk(x, mask=mask)
 
-        x = self.ln(x)
-        return self.head(x)
+        return x
 
 # ----------------------------
 # Testing the model
 # ----------------------------
 def main():
     VOCAB_SIZE = 27  # 0-25 normal tokens, 26 = MASK
-    MASK_TOKEN = 26
+    MASK_TOKEN = 1
     EMBED_DIM = 128   # divisible by NUM_HEADS
     NUM_HEADS = 4
     LAYER = 4
@@ -101,15 +154,15 @@ def main():
     # Example input
     test_tokens = torch.randint(0, 25, (8, 32))  # shape (B=2, T=32)
 
-    # Pad to MAX_SEQ_LENGTH
-    num_missing = MAX_SEQ_LENGTH - test_tokens.shape[1]
-    if num_missing > 0:
-        pad_tensor = torch.full((test_tokens.shape[0], num_missing), MASK_TOKEN, dtype=torch.long)
-        test_tokens = torch.cat([test_tokens, pad_tensor], dim=1)
+    # # Pad to MAX_SEQ_LENGTH
+    # num_missing = MAX_SEQ_LENGTH - test_tokens.shape[1]
+    # if num_missing > 0:
+    #     pad_tensor = torch.full((test_tokens.shape[0], num_missing), MASK_TOKEN, dtype=torch.long)
+    #     test_tokens = torch.cat([test_tokens, pad_tensor], dim=1)
 
-    # Mask: 1 for real tokens, 0 for padding
-    mask = (test_tokens != MASK_TOKEN).float()  # (B,T)
-    mask = mask.unsqueeze(1).unsqueeze(2)
+    # # Mask: 1 for real tokens, 0 for padding
+    # mask = (test_tokens != MASK_TOKEN).float()  # (B,T)
+    # mask = mask.unsqueeze(1).unsqueeze(2)
 
     print("Tokens shape:", test_tokens.shape)
     print("Mask shape:", mask.shape)
