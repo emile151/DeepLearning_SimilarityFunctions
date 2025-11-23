@@ -46,7 +46,7 @@ def tokenize(seqs, max_len):
         tokenized_seqs.append(torch.tensor(token_seq))
     return tokenized_seqs
 
-def create_pandas_df_from_path(path_to_dataset, max_len):
+def create_pandas_df_from_path(path_to_dataset):
     data_lines = open(path_to_dataset, "r")
     ids = []
     domain = []
@@ -70,7 +70,6 @@ def create_pandas_df_from_path(path_to_dataset, max_len):
     class_to_idx = {cls: i for i, cls in enumerate(unique_classes)}
     print("class_to_idx", class_to_idx)
     int_labels = [torch.tensor(class_to_idx[nam]) for nam in class_nam]
-    print("int_labels", int_labels)
     #tokenized_seqs = tokenize(sequence, max_len)
     data = pd.DataFrame({
         "id" : ids,
@@ -83,8 +82,8 @@ def create_pandas_df_from_path(path_to_dataset, max_len):
     })
     return data
 
-def get_dataloaders(path_to_data, batch_size = 32, max_len = 72):
-    data = create_pandas_df_from_path(path_to_data, max_len)
+def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, class_of_interest = [0,1,2,3,4,5]):
+    data = create_pandas_df_from_path(path_to_data)
     train_df, test_df = train_test_split(
         data, 
         test_size=0.15, 
