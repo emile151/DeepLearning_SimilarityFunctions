@@ -30,7 +30,7 @@ class SignalP(nn.Module):
             clf_x = torch.mean(x, dim = 1) 
         else:
             clf_x = x[:,0,:]
-            
+
         logits = self.classifier(clf_x)
         return logits
     def forward_encode(self, tokens):
@@ -66,7 +66,24 @@ def run_epoch(model, data_loader, mode, args):
 
     return torch.cat(preds, dim=0), torch.cat(targets, dim=0), np.mean(losses)
 
+def run_epoch_embed(model, data_loader, mode, args):
+    loss_fn = args.loss
+    optimizer = args.optimizer(model.parameters(), lr=1e-3)
+    tqdm_bar = tqdm(data_loader, total=len(data_loader))
+    model.eval()
+    batch_loss = 0
+    i = 0
+    preds = []
+    targets = []
+    losses = []
+    for batch, (inputs, batch_targets) in enumerate(data_loader):
+        inputs, batch_targets = inputs.to(args.device), batch_targets.to(args.device)
+        batch_preds = model.forward_encode(inputs)
+        preds.append(batch_preds.detach().cpu())
+        targets.append(batch_targets.detach().cpu())
+        tqdm_bar.update()
 
+    return torch.cat(preds, dim=0), torch.cat(targets, dim=0)
 
 def to_numpy(x):
     if isinstance(x, torch.Tensor):
@@ -163,5 +180,14 @@ def test_model(model, test_dataloader, args):
     print("AUPRC at epoch ", test_eval["auprc"])
     print("MCC at epoch ", test_eval["mcc"])
     print("Loss at epoch ", loss)
+    print("--------------------------------------------------------------------------")
+    return preds, targets
+
+def test_model_embed(model, test_dataloader, args):
+    preds, targets, loss = run_epoch_embed(model, test_dataloader, 'Test', args)
+    #print("Test AUROC at epoch " , test_eval["auroc"])
+    #print("AUPRC at epoch ", test_eval["auprc"])
+    #print("MCC at epoch ", test_eval["mcc"])
+    #print("Loss at epoch ", loss)
     print("--------------------------------------------------------------------------")
     return preds, targets

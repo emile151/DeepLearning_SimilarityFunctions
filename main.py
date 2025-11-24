@@ -22,7 +22,7 @@ def main():
         "num_heads" : 2,
         "num_layers" : 2,
         "embed_dim" : 4,
-        "attention_fn" : 'rbf',
+        "attention_fn" : None,
         "dropout" : 0.3,
         "Classifier" : classifier.LinearClassifier,
         "loss" : F.cross_entropy,
@@ -30,7 +30,7 @@ def main():
         "num_epochs" : 10,
         "device" : device,
         "output_dir" : "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results",
-        "experiment_title" : "test_cluster",
+        "experiment_title" : "test_average_linear",
         "classifier_reduction" : "mean"
 
     }
