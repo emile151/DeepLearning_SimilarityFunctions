@@ -18,20 +18,20 @@ def main():
 
     args = {
         "max_len" : 72,
-        "vocab_size": 25,
+        "vocab_size": 26,
         "num_classes" : 6,
         "attention_fn" : None,
-        "num_heads" : 4,
-        "num_layers" : 2,
-        "embed_dim" : 24,
+        "num_heads" : 8,
+        "num_layers" : 4,
+        "embed_dim" : 512,
         "dropout" : 0.3,
         "Classifier" : classifier.LinearClassifier,
         "loss" : F.cross_entropy,
         "optimizer" : torch.optim.Adam,
-        "num_epochs" : 10,
+        "num_epochs" : 100,
         "device" : device,
-        "output_dir" : "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results/",
-        "experiment_title" : "test"
+        "output_dir" : "/zhome/0e/0/213839/DeepLearning_SimilarityFunctions/results/",
+        "experiment_title" : "test_cluster"
     }
 
     args = Namespace(**args)
@@ -39,6 +39,7 @@ def main():
     path_to_data = "data/complete_set_unpartitioned.fasta"
     batch_size = 32
 
+    print(f"Train on device: {device}")
     train_dataloader, dev_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, args.max_len)
     model, evals = train.train_model(train_dataloader, dev_dataloader, args)
 
