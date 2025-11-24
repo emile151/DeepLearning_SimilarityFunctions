@@ -137,7 +137,8 @@ class SmallTransformer(nn.Module):
         self.embed = nn.Embedding(vocab_size, embed_dim)
         # pos_emb is a learnable matrix of positional encoding
         # matrix is random initialzed with small numbers to not overwhelm in the beginning
-        self.pos_emb = nn.Parameter(torch.randn(1, max_len, embed_dim) * 0.01)
+        scale = 0.0001
+        self.pos_emb = nn.Parameter(torch.randn(1, max_len, embed_dim) * scale)
 
         # Create a stack of encoder layers (depth times)
         self.blocks = nn.ModuleList([
@@ -153,6 +154,17 @@ class SmallTransformer(nn.Module):
             x = blk(x, mask=mask)
 
         return x
+    
+    def forward_block(self, tokens, idx, mask=None):
+        B, T = tokens.shape
+        x = self.embed(tokens) + self.pos_emb[:, :T, :]
+ 
+        for i in range(idx + 1):
+            blk = self.blocks[i]
+            x = blk(x, mask=mask)
+
+        return x
+    
 
 # ----------------------------
 # Testing the model
