@@ -83,20 +83,36 @@ def create_pandas_df_from_path(path_to_dataset):
     return data
 
 def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, class_of_interest = [0,1,2,3,4,5]):
-    data = create_pandas_df_from_path(path_to_data)
-    train_df, test_df = train_test_split(
-        data, 
-        test_size=0.15, 
-        shuffle=True, 
-        random_state=42
-    )
-    dev_rel = 0.15 / 0.85
-    train_df, dev_df = train_test_split(
-        train_df, 
-        test_size=dev_rel, 
-        shuffle=True, 
-        random_state=42
-    )
+    if path_to_data.split(".")[-1] == "fasta":
+        data = create_pandas_df_from_path(path_to_data)
+        train_df, test_df = train_test_split(
+            data, 
+            test_size=0.15, 
+            shuffle=True, 
+            random_state=42
+        )
+        dev_rel = 0.15 / 0.85
+        train_df, dev_df = train_test_split(
+            train_df, 
+            test_size=dev_rel, 
+            shuffle=True, 
+            random_state=42
+        )
+        train_df["split_group"] = "train"
+        dev_df["split_group"] = "dev"
+        test_df["split_group"] = "test"
+
+        combined = pd.concat([train_df, dev_df, test_df], ignore_index=True)
+        combined["class_ints"] = combined["class_ints"].astype(int)
+        path = "/".join(path_to_data.split("/")[0:-1]) + "/dataset.csv"
+        combined.to_csv(path, index=False)
+        print("CSV dataset written to: ", path)
+    elif path_to_data.split(".")[-1] == "csv":
+        df = pd.read_csv(path_to_data)
+        df 
+        train_df = df[df["split_group"] == "train"].reset_index(drop=True)
+        dev_df   = df[df["split_group"] == "dev"].reset_index(drop=True)
+        test_df  = df[df["split_group"] == "test"].reset_index(drop=True)
 
     train_set = SignalPeptides(train_df, max_len)
     dev_set = SignalPeptides(dev_df, max_len)
