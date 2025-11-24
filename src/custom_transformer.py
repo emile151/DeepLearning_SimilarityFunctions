@@ -26,7 +26,6 @@ class MultiHeadedAttention(nn.Module):
 
         # Custom Attention function
 
-        self.attn_fn = attn_fn or self.dot_prod_attention
         if attn_fn == 'rbf':
             self.gamma = nn.Parameter(torch.tensor(0.2))
             self.attn_fn = self.rbf_attention
