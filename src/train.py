@@ -26,7 +26,11 @@ class SignalP(nn.Module):
         
     def forward(self, tokens):
         x = self.transformer(tokens)
-        clf_x = x[:,0,:]
+        if self.args.classifier_reduction == "mean":
+            clf_x = torch.mean(x, dim = 1) 
+        else:
+            clf_x = x[:,0,:]
+            
         logits = self.classifier(clf_x)
         return logits
     def forward_encode(self, tokens):
