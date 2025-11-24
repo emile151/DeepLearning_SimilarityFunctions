@@ -17,7 +17,7 @@ def main():
 
     args = {
         "max_len" : 72,
-        "vocab_size": 25,
+        "vocab_size": 26,
         "num_classes" : 6,
         "attention_fn" : 'rbf',
         "num_heads" : 2,
@@ -33,9 +33,11 @@ def main():
         "experiment_title" : "small_embed_dim"
     }
 
+
+
     args = Namespace(**args)
 
-    path_to_data = "data/complete_set_unpartitioned.fasta"
+    path_to_data = "data/dataset.csv"
     batch_size = 32
 
     train_dataloader, dev_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, args.max_len)
