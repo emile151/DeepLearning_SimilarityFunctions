@@ -2,7 +2,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler, TensorDataset
 
 class SignalPeptides(Dataset):
     def __init__(self, data, max_len):
