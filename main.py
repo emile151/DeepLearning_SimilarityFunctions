@@ -19,18 +19,18 @@ def main():
         "max_len" : 72,
         "vocab_size": 26,
         "num_classes" : 6,
-        "num_heads" : 8,
+        "num_heads" : 4,
         "num_layers" : 4,
-        "embed_dim" : 512,
+        "embed_dim" : 128,
         "attention_fn" : 'rbf',
         "dropout" : 0.3,
         "Classifier" : classifier.LinearClassifier,
         "loss" : F.cross_entropy,
         "optimizer" : torch.optim.Adam,
-        "num_epochs" : 100,
+        "num_epochs" : 20,
         "device" : device,
         "output_dir" : "/zhome/0e/0/213839/DeepLearning_SimilarityFunctions/results/",
-        "experiment_title" : "test_cluster"
+        "experiment_title" : "test_cluster_rbf"
     }
 
 
