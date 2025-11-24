@@ -1,8 +1,9 @@
 import pandas as pd
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, WeightedRandomSampler, TensorDataset
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 class SignalPeptides(Dataset):
     def __init__(self, data, max_len):
@@ -82,7 +83,7 @@ def create_pandas_df_from_path(path_to_dataset):
     })
     return data
 
-def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, class_of_interest = [0,1,2,3,4,5]):
+def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, use_sample_weights = True):
     if path_to_data.split(".")[-1] == "fasta":
         data = create_pandas_df_from_path(path_to_data)
         train_df, test_df = train_test_split(
@@ -117,7 +118,18 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, class_of_intere
     train_set = SignalPeptides(train_df, max_len)
     dev_set = SignalPeptides(dev_df, max_len)
     test_set = SignalPeptides(test_df, max_len)
-    train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+
+    if use_sample_weights:
+        targets = np.array(train_set.labels)
+        class_sample_count = np.array([len(np.where(targets == t)[0]) for t in np.unique(targets)])
+        weight = 1. / class_sample_count
+        samples_weight = np.array([weight[int(t)] for t in targets])
+
+        samples_weight = torch.from_numpy(samples_weight)
+        sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement = True)
+        train_dataloader = DataLoader(train_set, batch_size=batch_size, sampler=sampler)
+    else:
+        train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     dev_dataloader = DataLoader(dev_set, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(test_set, batch_size=batch_size, shuffle=True)    
     return train_dataloader,dev_dataloader, test_dataloader
