@@ -46,7 +46,7 @@ def tokenize(seqs, max_len):
         tokenized_seqs.append(torch.tensor(token_seq))
     return tokenized_seqs
 
-def create_pandas_df_from_path(path_to_dataset, max_len):
+def create_pandas_df_from_path(path_to_dataset):
     data_lines = open(path_to_dataset, "r")
     ids = []
     domain = []
@@ -70,7 +70,6 @@ def create_pandas_df_from_path(path_to_dataset, max_len):
     class_to_idx = {cls: i for i, cls in enumerate(unique_classes)}
     print("class_to_idx", class_to_idx)
     int_labels = [torch.tensor(class_to_idx[nam]) for nam in class_nam]
-    print("int_labels", int_labels)
     #tokenized_seqs = tokenize(sequence, max_len)
     data = pd.DataFrame({
         "id" : ids,
@@ -83,21 +82,37 @@ def create_pandas_df_from_path(path_to_dataset, max_len):
     })
     return data
 
-def get_dataloaders(path_to_data, batch_size = 32, max_len = 72):
-    data = create_pandas_df_from_path(path_to_data, max_len)
-    train_df, test_df = train_test_split(
-        data, 
-        test_size=0.15, 
-        shuffle=True, 
-        random_state=42
-    )
-    dev_rel = 0.15 / 0.85
-    train_df, dev_df = train_test_split(
-        train_df, 
-        test_size=dev_rel, 
-        shuffle=True, 
-        random_state=42
-    )
+def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, class_of_interest = [0,1,2,3,4,5]):
+    if path_to_data.split(".")[-1] == "fasta":
+        data = create_pandas_df_from_path(path_to_data)
+        train_df, test_df = train_test_split(
+            data, 
+            test_size=0.15, 
+            shuffle=True, 
+            random_state=42
+        )
+        dev_rel = 0.15 / 0.85
+        train_df, dev_df = train_test_split(
+            train_df, 
+            test_size=dev_rel, 
+            shuffle=True, 
+            random_state=42
+        )
+        train_df["split_group"] = "train"
+        dev_df["split_group"] = "dev"
+        test_df["split_group"] = "test"
+
+        combined = pd.concat([train_df, dev_df, test_df], ignore_index=True)
+        combined["class_ints"] = combined["class_ints"].astype(int)
+        path = "/".join(path_to_data.split("/")[0:-1]) + "/dataset.csv"
+        combined.to_csv(path, index=False)
+        print("CSV dataset written to: ", path)
+    elif path_to_data.split(".")[-1] == "csv":
+        df = pd.read_csv(path_to_data)
+        df 
+        train_df = df[df["split_group"] == "train"].reset_index(drop=True)
+        dev_df   = df[df["split_group"] == "dev"].reset_index(drop=True)
+        test_df  = df[df["split_group"] == "test"].reset_index(drop=True)
 
     train_set = SignalPeptides(train_df, max_len)
     dev_set = SignalPeptides(dev_df, max_len)

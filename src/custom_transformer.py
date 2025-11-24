@@ -25,24 +25,42 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
         # Custom Attention function
-        """
-        if else statement ? Was verwendet or wenn beides gegeben wird ? 
-        """
+
         self.attn_fn = attn_fn or self.dot_prod_attention
+        if attn_fn == 'rbf':
+            self.gamma = nn.Parameter(torch.tensor(0.2))
+            self.attn_fn = self.rbf_attention
+        else:
+            self.attn_fn = self.dot_prod_attention
 
     def dot_prod_attention(self, query, key, value, mask , dropout=None):
         d_k = query.size(-1)
-        """
-        QUESTIONS: 
-        d_k = dimension per head ? 
-        """
+        ##### To be changed in each attention function
         scores = query @ key.transpose(-2, -1) / math.sqrt(d_k)
         if mask is not None:
             scores = scores.masked_fill(mask == 0, float('-inf'))
         
         attn_weights = F.softmax(scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
+        #####
 
+        out = attn_weights @ value
+        return out
+    
+    def rbf_attention(self, query, key, value, mask , dropout=None):
+        d_k = query.size(-1)
+        q_exp = query.unsqueeze(3)   # (B, H, Tq, 1, d_k)
+        k_exp = key.unsqueeze(2)     # (B, H, 1, Tk, d_k)
+        ##### To be changed in each attention function
+        dist = (q_exp - k_exp).pow(2).sum(-1)   # (B, H, Tq, Tk)
+        rbf = torch.exp(-dist / self.gamma)   # (B, C)
+        scores = rbf  / math.sqrt(d_k)
+        #####
+
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, float('-inf'))
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
         out = attn_weights @ value
         return out
 

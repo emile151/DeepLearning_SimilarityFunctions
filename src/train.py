@@ -62,6 +62,8 @@ def run_epoch(model, data_loader, mode, args):
 
     return torch.cat(preds, dim=0), torch.cat(targets, dim=0), np.mean(losses)
 
+
+
 def to_numpy(x):
     if isinstance(x, torch.Tensor):
         return x.detach().cpu().numpy()
@@ -135,17 +137,17 @@ def train_model(train_dataloader, dev_dataloader, args):
 
     for epoch in range(args.num_epochs):
         print("Epoch = ", str(epoch + 1))
-        for mode, data_loader in [('Train', train_dataloader),('Dev', dev_dataloader)]:
+        for mode, data_loader in [('Train', train_dataloader)]:#,('Dev', dev_dataloader)]:
             print(mode, " for epoch ", str(epoch + 1))
             preds, targets, loss = run_epoch(model, data_loader, mode, args)
             epoch_eval = eval(preds, targets )
             evals[mode].append(epoch_eval)
             if mode == 'Train': 
                 evals["loss"].append(loss.item())
-            print("AUROC at epoch ", str(epoch + 1), " = ", epoch_eval["auroc"])
-            print("AUPRC at epoch ", str(epoch + 1), " = ", epoch_eval["auprc"])
-            print("MCC at epoch ", str(epoch + 1), " = ", epoch_eval["mcc"])
-            print("Loss at epoch ", str(epoch + 1), " = ", loss)
+            print(mode + "_AUROC at epoch ", str(epoch + 1), " = ", epoch_eval["auroc"])
+            print(mode + "_AUPRC at epoch ", str(epoch + 1), " = ", epoch_eval["auprc"])
+            print(mode + "_MCC at epoch ", str(epoch + 1), " = ", epoch_eval["mcc"])
+            print(mode + "_Loss at epoch ", str(epoch + 1), " = ", loss)
             print("--------------------------------------------------------------------------")
         torch.save(model, path_to_model)
     return model, evals
