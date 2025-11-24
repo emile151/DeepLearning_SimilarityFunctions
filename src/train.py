@@ -36,10 +36,14 @@ class SignalP(nn.Module):
     def forward_encode(self, tokens):
         x = self.transformer(tokens)
         return x
+    
+    def forward_idx(self, tokens, idx):
+        x = self.transformer.forward_block(tokens, idx)
+        return x
 
 def run_epoch(model, data_loader, mode, args):
     loss_fn = args.loss
-    optimizer = args.optimizer(model.parameters(), lr=1e-3)
+    optimizer = args.optimizer(model.parameters(), lr=args.lr)
     tqdm_bar = tqdm(data_loader, total=len(data_loader))
 
     if mode == 'Train':
@@ -79,6 +83,20 @@ def run_epoch_embed(model, data_loader, mode, args):
     for batch, (inputs, batch_targets) in enumerate(data_loader):
         inputs, batch_targets = inputs.to(args.device), batch_targets.to(args.device)
         batch_preds = model.forward_encode(inputs)
+        preds.append(batch_preds.detach().cpu())
+        targets.append(batch_targets.detach().cpu())
+        tqdm_bar.update()
+
+    return torch.cat(preds, dim=0), torch.cat(targets, dim=0)
+
+def run_epoch_idx(model, data_loader, args, idx):
+    tqdm_bar = tqdm(data_loader, total=len(data_loader))
+    model.eval()
+    preds = []
+    targets = []
+    for batch, (inputs, batch_targets) in enumerate(data_loader):
+        inputs, batch_targets = inputs.to(args.device), batch_targets.to(args.device)
+        batch_preds = model.forward_idx(inputs, idx)
         preds.append(batch_preds.detach().cpu())
         targets.append(batch_targets.detach().cpu())
         tqdm_bar.update()
@@ -158,7 +176,7 @@ def train_model(train_dataloader, dev_dataloader, args):
 
     for epoch in range(args.num_epochs):
         print("Epoch = ", str(epoch + 1))
-        for mode, data_loader in [('Train', train_dataloader)]:#,('Dev', dev_dataloader)]:
+        for mode, data_loader in [('Train', train_dataloader),('Dev', dev_dataloader)]:
             print(mode, " for epoch ", str(epoch + 1))
             preds, targets, loss = run_epoch(model, data_loader, mode, args)
             epoch_eval = eval(preds, targets )
@@ -184,10 +202,16 @@ def test_model(model, test_dataloader, args):
     return preds, targets
 
 def test_model_embed(model, test_dataloader, args):
-    preds, targets, loss = run_epoch_embed(model, test_dataloader, 'Test', args)
+    preds, targets = run_epoch_embed(model, test_dataloader, 'Test', args)
     #print("Test AUROC at epoch " , test_eval["auroc"])
     #print("AUPRC at epoch ", test_eval["auprc"])
     #print("MCC at epoch ", test_eval["mcc"])
     #print("Loss at epoch ", loss)
+    print("--------------------------------------------------------------------------")
+    return preds, targets
+
+def test_model_idx(model, test_dataloader, args, idx):
+    preds, targets = run_epoch_idx(model, test_dataloader, args, idx)
+
     print("--------------------------------------------------------------------------")
     return preds, targets

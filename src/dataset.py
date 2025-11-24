@@ -83,9 +83,10 @@ def create_pandas_df_from_path(path_to_dataset):
     })
     return data
 
-def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, use_sample_weights = True):
+def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, exclude_class = [], use_sample_weights = True):
     if path_to_data.split(".")[-1] == "fasta":
         data = create_pandas_df_from_path(path_to_data)
+        data = data[~data["class"].isin(exclude_class)]
         train_df, test_df = train_test_split(
             data, 
             test_size=0.15, 
@@ -110,7 +111,13 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, use_sample_weig
         print("CSV dataset written to: ", path)
     elif path_to_data.split(".")[-1] == "csv":
         df = pd.read_csv(path_to_data)
-        df 
+        df = df[~df["class"].isin(exclude_class)]
+        class_nam = df["class"]
+        unique_classes = sorted(set(class_nam))
+        class_to_idx = {cls: i for i, cls in enumerate(unique_classes)}
+        print("class_to_idx", class_to_idx)
+        int_labels = [torch.tensor(class_to_idx[nam]) for nam in class_nam]
+        df["class_ints"] = int_labels
         train_df = df[df["split_group"] == "train"].reset_index(drop=True)
         dev_df   = df[df["split_group"] == "dev"].reset_index(drop=True)
         test_df  = df[df["split_group"] == "test"].reset_index(drop=True)
@@ -122,7 +129,12 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, use_sample_weig
     if use_sample_weights:
         targets = np.array(train_set.labels)
         class_sample_count = np.array([len(np.where(targets == t)[0]) for t in np.unique(targets)])
+        
+        print(class_sample_count)
+
         weight = 1. / class_sample_count
+        print(weight)
+        weight = [1/6, 1/6, 1/2, 1/6, 1/2, 1/2]
         samples_weight = np.array([weight[int(t)] for t in targets])
 
         samples_weight = torch.from_numpy(samples_weight)
@@ -130,6 +142,7 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, use_sample_weig
         train_dataloader = DataLoader(train_set, batch_size=batch_size, sampler=sampler)
     else:
         train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    
     dev_dataloader = DataLoader(dev_set, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(test_set, batch_size=batch_size, shuffle=True)    
     return train_dataloader,dev_dataloader, test_dataloader

@@ -18,24 +18,23 @@ def main():
     args = {
         "max_len" : 72,
         "vocab_size": 26,
-        "num_classes" : 6,
+        "num_classes" : 3,
         "num_heads" : 2,
         "num_layers" : 2,
-        "embed_dim" : 4,
+        "embed_dim" : 8,
         "attention_fn" : None,
-        "dropout" : 0.3,
+        "dropout" : 0.2,
         "Classifier" : classifier.LinearClassifier,
         "loss" : F.cross_entropy,
         "optimizer" : torch.optim.Adam,
-        "num_epochs" : 10,
+        "lr" : 1e-4,
+        "num_epochs" : 30,
         "device" : device,
-        "output_dir" : "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results",
+        "output_dir" : "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results/",
         "experiment_title" : "test_average_linear",
-        "classifier_reduction" : "mean"
-
+        "classifier_reduction" : "mean",
+        "exclude_class" : ["TA", "PILI", "TATLIP"]
     }
-
-
 
     args = Namespace(**args)
 
@@ -43,11 +42,10 @@ def main():
     batch_size = 32
 
     print(f"Train on device: {device}")
-    train_dataloader, dev_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, args.max_len)
+    train_dataloader, dev_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, args.max_len, args.exclude_class, use_sample_weights = False)
     model, evals = train.train_model(train_dataloader, dev_dataloader, args)
     preds, targets = train.test_model(model, test_dataloader, args)
-    print(preds[0])
-    print(targets[0])
+
 
 
 if __name__ == "__main__":
