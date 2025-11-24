@@ -7,3 +7,4 @@ transformers
 tokenizers
 sentencepiece
 sacremoses
+tqdm

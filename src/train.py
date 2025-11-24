@@ -126,7 +126,7 @@ def eval(preds, targets):
     return metrics
 
 def train_model(train_dataloader, dev_dataloader, args):
-    model = SignalP(args)
+    model = SignalP(args).to(args.device)
     path_to_model = args.output_dir + args.experiment_title + ".pth"
     print("Model will be saved at: ", path_to_model)
     evals = {
