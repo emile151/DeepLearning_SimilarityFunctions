@@ -19,18 +19,20 @@ def main():
         "max_len" : 72,
         "vocab_size": 26,
         "num_classes" : 6,
-        "num_heads" : 8,
-        "num_layers" : 4,
-        "embed_dim" : 512,
+        "num_heads" : 2,
+        "num_layers" : 2,
+        "embed_dim" : 4,
         "attention_fn" : 'rbf',
         "dropout" : 0.3,
         "Classifier" : classifier.LinearClassifier,
         "loss" : F.cross_entropy,
         "optimizer" : torch.optim.Adam,
-        "num_epochs" : 100,
+        "num_epochs" : 10,
         "device" : device,
-        "output_dir" : "/zhome/0e/0/213839/DeepLearning_SimilarityFunctions/results/",
-        "experiment_title" : "test_cluster"
+        "output_dir" : "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results",
+        "experiment_title" : "test_cluster",
+        "classifier_reduction" : "mean"
+
     }
 
 
