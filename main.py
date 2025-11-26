@@ -14,7 +14,9 @@ import train
 
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    # For multilabel use F.binary_cross_entropy_with_logits
+    # num_classes = 11
+    # is_multilabel = True
     args = {
         "max_len" : 72,
         "vocab_size": 26,
