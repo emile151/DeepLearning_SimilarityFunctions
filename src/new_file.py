@@ -54,14 +54,33 @@ class custom_classifier(nn.Module):
         return logits
 
 # -----------------------------
+# Model
+# -----------------------------
+class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
+    """
+    Linearly increases learning rate from 0 → base LR during warmup_steps.
+    After warmup, the scheduler should be switched to another scheduler
+    (e.g., ReduceLROnPlateau).
+    """
+    def __init__(self, optimizer, warmup_steps, last_epoch=-1):
+        self.warmup_steps = warmup_steps
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = max(1, self.last_epoch + 1)
+        scale = min(step / self.warmup_steps, 1.0)
+        return [base_lr * scale for base_lr in self.base_lrs]
+
+# -----------------------------
 # Training loop with early stopping
 # -----------------------------
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler=None,
+def train_model(model, train_loader, val_loader, criterion, optimizer, warmup_scheduler, plateau_scheduler,
                 start_epoch=0, epochs=50, patience=5, label_cols=None):
 
     model.to(DEVICE)
     best_f1 = 0.0
     no_improve = 0
+    global_step = 0
 
     for epoch in range(start_epoch, epochs):
         model.train()
@@ -70,20 +89,32 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         train_loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False)
         for batch in train_loop:
             sequences, labels, attention_mask = [b.to(DEVICE) for b in batch]
+            
             optimizer.zero_grad()
             logits = model(sequences, attention_mask)
             loss = criterion(logits, labels)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+
+            global_step += 1
             total_loss += loss.item()
+
+            # Warmup step
+            if global_step <= warmup_scheduler.warmup_steps:
+                warmup_scheduler.step()
+                current_lr = warmup_scheduler.get_last_lr()[0]
+            else:
+                current_lr = optimizer.param_groups[0]["lr"]
 
             # Update tqdm postfix with current loss
             train_loop.set_postfix({"loss": f"{loss.item():.4f}"})
 
         avg_train_loss = total_loss / len(train_loader)
 
-        # Validation
+        # -----------------------------
+        # VALIDATION
+        # -----------------------------
         model.eval()
         val_loss = 0.0
         all_preds = []
@@ -95,6 +126,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 sequences, labels, attention_mask = [b.to(DEVICE) for b in batch]
                 logits = model(sequences, attention_mask)
                 loss = criterion(logits, labels)
+
                 val_loss += loss.item()
                 all_preds.append(torch.sigmoid(logits).cpu())
                 all_labels.append(labels.cpu())
@@ -106,12 +138,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         all_preds = torch.cat(all_preds)
         all_labels = torch.cat(all_labels)
 
-        preds_bin = (all_preds >= 0.5).float()
+        preds_bin = (all_preds >= 0.3).float()
         macro_f1 = f1_score(all_labels, preds_bin, average="macro", zero_division=0)
 
         # Per-class metrics
         per_class_f1 = f1_score(all_labels, preds_bin, average=None, zero_division=0)
         per_class_auc = []
+
         for i in range(all_labels.shape[1]):
             try:
                 auc = roc_auc_score(all_labels[:, i], all_preds[:, i])
@@ -123,17 +156,22 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         for i, label in enumerate(label_cols):
             print(f"  {label:20s} - F1: {per_class_f1[i]:.4f} - ROC-AUC: {per_class_auc[i]:.4f}")
 
-        # Scheduler step
-        if scheduler:
-            scheduler.step(macro_f1)
-            print("Current LR:", scheduler.get_last_lr())
+        # -----------------------------
+        # Learning Rate Scheduling
+        # -----------------------------
+        if global_step > warmup_scheduler.warmup_steps:
+            plateau_scheduler.step(macro_f1)
+            print("Plateau LR:", optimizer.param_groups[0]["lr"])
+        else:
+            print("Warmup LR:", optimizer.param_groups[0]["lr"])
 
         # Save checkpoint every epoch
         checkpoint = {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
+            "warmup_scheduler_state_dict": warmup_scheduler.state_dict(),
+            "plateau_scheduler_state_dict": plateau_scheduler.state_dict(),
             "best_macro_f1": best_f1
         }
         torch.save(checkpoint, MODEL_CHECKPOINT)
@@ -200,9 +238,9 @@ def main():
         "max_len" : MAX_LEN,
         "vocab_size": 23,
         "num_classes" : len(label_cols),
-        "num_heads" : 2,
-        "num_layers" : 2,
-        "embed_dim" : 8,
+        "num_heads" : 4,
+        "num_layers" : 4,
+        "embed_dim" : 64,
         "attention_fn" : None,
         "Classifier" : classifier.LinearClassifier,
         "classifier_reduction" : "mean"
@@ -226,8 +264,14 @@ def main():
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
-    # Scheduler: reduce LR if macro F1 stops improving
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
+    # Scheduler config
+    warmup_steps = 1000
+
+    warmup_scheduler = WarmupScheduler(optimizer, warmup_steps=warmup_steps)
+
+    plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='max', factor=0.5, patience=2
+    )
 
     if False:
         model, optimizer, scheduler, start_epoch, best_f1 = load_checkpoint(
@@ -236,8 +280,8 @@ def main():
 
     print(f"Found {DEVICE} for training!")
 
-    train_model(model, test_loader, val_loader, criterion, optimizer, scheduler=scheduler,
-            epochs=50, patience=5, label_cols=label_cols)
+    train_model(model, train_loader, val_loader, criterion, optimizer, warmup_scheduler, plateau_scheduler,
+            epochs=100, patience=5, label_cols=label_cols)
 
 if __name__ == "__main__":
     main()

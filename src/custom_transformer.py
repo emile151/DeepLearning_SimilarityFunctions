@@ -108,7 +108,7 @@ class TransformerEncoderBlock(nn.Module):
         self.norm2 = nn.LayerNorm(emb_dim)
 
         # 4. Dropout layer
-        self.dropout = nn.Dropout()
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x, mask=None):
         # 1. Self-attention + residual + norm
