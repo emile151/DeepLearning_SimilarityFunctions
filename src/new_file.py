@@ -207,7 +207,7 @@ def main():
     # -----------------------------
     # Load data
     # -----------------------------
-    df = pd.read_csv("data/Swissprot_Train_Validation_dataset.csv")
+    df = pd.read_csv("data/Swissprot_Train_Validation_dataset_clean.csv")
 
     # The one-hot columns (based on your table)
     label_cols = [
