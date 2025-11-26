@@ -19,7 +19,7 @@ from argparse import Namespace
 # CONFIG
 # -----------------------------
 MAX_LEN = 1024
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 EPOCHS = 50
 LR = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -238,9 +238,9 @@ def main():
         "max_len" : MAX_LEN,
         "vocab_size": 23,
         "num_classes" : len(label_cols),
-        "num_heads" : 16,
-        "num_layers" : 8,
-        "embed_dim" : 256,
+        "num_heads" : 8,
+        "num_layers" : 6,
+        "embed_dim" : 128,
         "attention_fn" : None,
         "Classifier" : classifier.LinearClassifier,
         "classifier_reduction" : "mean"
