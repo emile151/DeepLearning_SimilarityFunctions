@@ -71,8 +71,6 @@ def run_epoch(model, data_loader, mode, args):
     return torch.cat(preds, dim=0), torch.cat(targets, dim=0), np.mean(losses)
 
 def run_epoch_embed(model, data_loader, mode, args):
-    loss_fn = args.loss
-    optimizer = args.optimizer(model.parameters(), lr=1e-3)
     tqdm_bar = tqdm(data_loader, total=len(data_loader))
     model.eval()
     batch_loss = 0
@@ -106,61 +104,71 @@ def run_epoch_idx(model, data_loader, args, idx):
 def to_numpy(x):
     if isinstance(x, torch.Tensor):
         return x.detach().cpu().numpy()
-    return x
-
-
-def compute_auroc(pred_logits, targets):
-    """
-    pred_logits: (B, C) raw logits
-    targets: (B,) integer class labels
-    """
-
-    pred = to_numpy(pred_logits)
+    return np.array(x)
+def compute_auroc(pred_logits, targets, multilabel=False):
     y = to_numpy(targets)
-
-    # Multiclass: pass multi_class="ovr"
-    if pred.shape[1] > 2:
-        return roc_auc_score(y, pred, multi_class="ovr")
-    else:
-        # Binary: take probability of class 1
-        probs = pred[:, 1]
-        return roc_auc_score(y, probs)
-
-def compute_auprc(pred_logits, targets):
-    pred = to_numpy(pred_logits)
-    y = to_numpy(targets)
-
-    C = pred.shape[1]
-
-    # Multiclass → compute AUPRC for each class (one-vs-rest)
-    if C > 2:
+    
+    if multilabel:
+        # Multilabel: sigmoid + compute per class
+        pred_probs = to_numpy(torch.sigmoid(pred_logits))
         scores = []
-        for c in range(C):
-            y_bin = (y == c).astype(int)
-            scores.append(average_precision_score(y_bin, pred[:, c]))
+        for c in range(y.shape[1]):
+            scores.append(roc_auc_score(y[:, c], pred_probs[:, c]))
         return np.mean(scores)
+    
+    else:
+        # Binary / multiclass: softmax
+        pred_probs = to_numpy(F.softmax(pred_logits, dim=1))
+        C = pred_probs.shape[1]
+        if C > 2:
+            return roc_auc_score(y, pred_probs, multi_class="ovr")
+        else:
+            # Binary
+            return roc_auc_score(y, pred_probs[:, 1])
 
-    # Binary
-    probs = pred[:, 1]
-    return average_precision_score(y, probs)
-
-def compute_mcc(pred_logits, targets):
-    pred = to_numpy(pred_logits)
+def compute_auprc(pred_logits, targets, multilabel=False):
     y = to_numpy(targets)
-    pred_labels = np.argmax(pred, axis=1)
+    
+    if multilabel:
+        pred_probs = to_numpy(torch.sigmoid(pred_logits))
+        scores = []
+        for c in range(y.shape[1]):
+            scores.append(average_precision_score(y[:, c], pred_probs[:, c]))
+        return np.mean(scores)
+    
+    else:
+        pred_probs = to_numpy(F.softmax(pred_logits, dim=1))
+        C = pred_probs.shape[1]
+        if C > 2:
+            scores = []
+            for c in range(C):
+                y_bin = (y == c).astype(int)
+                scores.append(average_precision_score(y_bin, pred_probs[:, c]))
+            return np.mean(scores)
+        else:
+            return average_precision_score(y, pred_probs[:, 1])
 
-    return matthews_corrcoef(y, pred_labels)
+def compute_mcc(pred_logits, targets, multilabel=False):
+    y = to_numpy(targets)
+    
+    if multilabel:
+        pred_probs = to_numpy(torch.sigmoid(pred_logits))
+        scores = []
+        for c in range(y.shape[1]):
+            pred_labels = (pred_probs[:, c] > 0.5).astype(int)
+            scores.append(matthews_corrcoef(y[:, c], pred_labels))
+        return np.mean(scores)
+    
+    else:
+        pred_probs = to_numpy(F.softmax(pred_logits, dim=1))
+        pred_labels = np.argmax(pred_probs, axis=1)
+        return matthews_corrcoef(y, pred_labels)
 
-def eval(preds, targets):
-    preds = F.softmax(preds, dim=1)
-    auroc = compute_auroc(preds, targets)
-    auprc = compute_auprc(preds, targets)
-    mcc = compute_mcc(preds, targets)
-
+def eval(pred_logits, targets, multilabel=False):
     metrics = {
-        "auroc" : auroc,
-        "auprc" : auprc,
-        "mcc"   : mcc
+        "auroc": compute_auroc(pred_logits, targets, multilabel),
+        "auprc": compute_auprc(pred_logits, targets, multilabel),
+        "mcc": compute_mcc(pred_logits, targets, multilabel)
     }
     return metrics
 
@@ -176,10 +184,10 @@ def train_model(train_dataloader, dev_dataloader, args):
 
     for epoch in range(args.num_epochs):
         print("Epoch = ", str(epoch + 1))
-        for mode, data_loader in [('Train', train_dataloader),('Dev', dev_dataloader)]:
+        for mode, data_loader in [('Train', train_dataloader)]:#,('Dev', dev_dataloader)]:
             print(mode, " for epoch ", str(epoch + 1))
             preds, targets, loss = run_epoch(model, data_loader, mode, args)
-            epoch_eval = eval(preds, targets )
+            epoch_eval = eval(preds, targets, args.is_multilabel)
             evals[mode].append(epoch_eval)
             if mode == 'Train': 
                 evals["loss"].append(loss.item())
@@ -187,6 +195,8 @@ def train_model(train_dataloader, dev_dataloader, args):
             print(mode + "_AUPRC at epoch ", str(epoch + 1), " = ", epoch_eval["auprc"])
             print(mode + "_MCC at epoch ", str(epoch + 1), " = ", epoch_eval["mcc"])
             print(mode + "_Loss at epoch ", str(epoch + 1), " = ", loss)
+            if mode == "Train" and loss < 0.01:
+                break;
             print("--------------------------------------------------------------------------")
         torch.save(model, path_to_model)
     return model, evals

@@ -6,11 +6,12 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 class SignalPeptides(Dataset):
-    def __init__(self, data, max_len):
+    def __init__(self, data, max_len, multilabel = False):
         self.data = data.reset_index(drop=True)
         self.seqs = self.data['sequence']
         self.labels = self.data['class_ints']
         self.max_len = max_len
+        self.multilabel = multilabel
 
     def __len__(self):
         return len(self.data)
@@ -29,8 +30,10 @@ class SignalPeptides(Dataset):
 
         # convert to tensor
         token_seq = torch.tensor(token_seq, dtype=torch.long)
-        label = torch.tensor(label, dtype=torch.long)
-
+        if self.multilabel:
+            label = torch.tensor(label, dtype=torch.float)
+        else:
+            label = torch.tensor(label, dtype=torch.long)
         return token_seq, label
 
 def tokenize(seqs, max_len):
@@ -83,8 +86,15 @@ def create_pandas_df_from_path(path_to_dataset):
     })
     return data
 
-def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, exclude_class = [], use_sample_weights = True):
-    if path_to_data.split(".")[-1] == "fasta":
+def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, is_multilabel = False, exclude_class = [], use_sample_weights = True):
+    if is_multilabel:
+        df = pd.read_csv(path_to_data)
+        df["class_ints"] = list(df.iloc[:, 4:15].values)
+        train_df = df[df["split_group"] == "train"].reset_index(drop=True)
+        dev_df   = df[df["split_group"] == "dev"].reset_index(drop=True)
+        test_df  = df[df["split_group"] == "test"].reset_index(drop=True)
+    
+    elif path_to_data.split(".")[-1] == "fasta":
         data = create_pandas_df_from_path(path_to_data)
         data = data[~data["class"].isin(exclude_class)]
         train_df, test_df = train_test_split(
@@ -122,9 +132,9 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, exclude_class =
         dev_df   = df[df["split_group"] == "dev"].reset_index(drop=True)
         test_df  = df[df["split_group"] == "test"].reset_index(drop=True)
 
-    train_set = SignalPeptides(train_df, max_len)
-    dev_set = SignalPeptides(dev_df, max_len)
-    test_set = SignalPeptides(test_df, max_len)
+    train_set = SignalPeptides(train_df, max_len, multilabel=is_multilabel)
+    dev_set = SignalPeptides(dev_df, max_len, multilabel=is_multilabel)
+    test_set = SignalPeptides(test_df, max_len, multilabel=is_multilabel)
 
     if use_sample_weights:
         targets = np.array(train_set.labels)
@@ -134,7 +144,7 @@ def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, exclude_class =
 
         weight = 1. / class_sample_count
         print(weight)
-        weight = [1/6, 1/6, 1/2, 1/6, 1/2, 1/2]
+        #weight = [1/6, 1/6, 1/2, 1/6, 1/2, 1/2]
         samples_weight = np.array([weight[int(t)] for t in targets])
 
         samples_weight = torch.from_numpy(samples_weight)
