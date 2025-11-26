@@ -23,8 +23,9 @@ BATCH_SIZE = 32
 EPOCHS = 50
 LR = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_CHECKPOINT = "./checkpoint.pt"
-BEST_MODEL_PATH = "./best_model.pt"
+EXPERIMENT_NAME = "dot_prod_mean"
+MODEL_CHECKPOINT = f"./model/{EXPERIMENT_NAME}_checkpoint.pt"
+BEST_MODEL_PATH = f"./model/{EXPERIMENT_NAME}_best_model.pt"
 PATIENCE = 5  # early stopping patience
 
 # -----------------------------
@@ -45,7 +46,7 @@ class custom_classifier(nn.Module):
     def forward(self, tokens, mask):
         x = self.transformer(tokens, mask)
         if self.args.classifier_reduction == "mean":
-            clf_x = torch.mean(x, dim = 1) 
+            clf_x = torch.mean(x[:, 1:, :], dim = 1)
         else:
             clf_x = x[:,0,:]
 
@@ -204,7 +205,7 @@ def main():
         "embed_dim" : 8,
         "attention_fn" : None,
         "Classifier" : classifier.LinearClassifier,
-        "classifier_reduction" : None
+        "classifier_reduction" : "mean"
     }
 
     args = Namespace(**args)
