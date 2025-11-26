@@ -19,7 +19,7 @@ from argparse import Namespace
 # CONFIG
 # -----------------------------
 MAX_LEN = 1024
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 EPOCHS = 50
 LR = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,7 +51,7 @@ class custom_classifier(nn.Module):
             clf_x = x[:,0,:]
 
         logits = self.classifier(clf_x)
-        return logits
+        return logits, clf_x
 
 # -----------------------------
 # Model
@@ -91,7 +91,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, warmup_sc
             sequences, labels, attention_mask = [b.to(DEVICE) for b in batch]
             
             optimizer.zero_grad()
-            logits = model(sequences, attention_mask)
+            logits, _ = model(sequences, attention_mask)
             loss = criterion(logits, labels)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -124,7 +124,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, warmup_sc
         with torch.no_grad():
             for batch in val_loop:
                 sequences, labels, attention_mask = [b.to(DEVICE) for b in batch]
-                logits = model(sequences, attention_mask)
+                logits, _ = model(sequences, attention_mask)
                 loss = criterion(logits, labels)
 
                 val_loss += loss.item()
@@ -238,9 +238,9 @@ def main():
         "max_len" : MAX_LEN,
         "vocab_size": 23,
         "num_classes" : len(label_cols),
-        "num_heads" : 4,
-        "num_layers" : 4,
-        "embed_dim" : 64,
+        "num_heads" : 16,
+        "num_layers" : 8,
+        "embed_dim" : 256,
         "attention_fn" : None,
         "Classifier" : classifier.LinearClassifier,
         "classifier_reduction" : "mean"
@@ -265,7 +265,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
     # Scheduler config
-    warmup_steps = 1000
+    warmup_steps = 3000
 
     warmup_scheduler = WarmupScheduler(optimizer, warmup_steps=warmup_steps)
 
