@@ -37,6 +37,8 @@ class MultiHeadedAttention(nn.Module):
         ##### To be changed in each attention function
         scores = query @ key.transpose(-2, -1) / math.sqrt(d_k)
         if mask is not None:
+            # Expand mask to match scores
+            mask = mask[:, None, None, :]  # [B, 1, 1, T]
             scores = scores.masked_fill(mask == 0, float('-inf'))
         
         attn_weights = F.softmax(scores, dim=-1)
@@ -74,7 +76,8 @@ class MultiHeadedAttention(nn.Module):
         K = K.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
         V = V.view(B, T, self.num_heads, self.d_head).transpose(1, 2)
 
-        #print(f"[DEBUG] query, Q is {Q} with shape {Q.shape}")
+        # print(f"[DEBUG] query, Q is {Q} with shape {Q.shape}")
+        # print(f"[DEBUG] mask is {mask} with shape {mask.shape}")
         scores = self.attn_fn(query = Q, key = K, value = V, mask = mask)
 
         out = scores.transpose(1, 2).reshape(B, T, D)
