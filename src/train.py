@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from dataset import get_dataloaders
 from sklearn.metrics import roc_auc_score, average_precision_score, matthews_corrcoef
+from torch.optim import lr_scheduler
 
 import custom_transformer
 
@@ -41,9 +42,8 @@ class SignalP(nn.Module):
         x = self.transformer.forward_block(tokens, idx)
         return x
 
-def run_epoch(model, data_loader, mode, args):
-    loss_fn = args.loss
-    optimizer = args.optimizer(model.parameters(), lr=args.lr)
+def run_epoch(model,loss_fn, optimizer, scheduler, data_loader, mode, args):
+
     tqdm_bar = tqdm(data_loader, total=len(data_loader))
 
     if mode == 'Train':
@@ -62,6 +62,7 @@ def run_epoch(model, data_loader, mode, args):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        scheduler.step()
         batch_loss += loss.item()
         losses.append(loss.item())
         preds.append(batch_preds.detach().cpu())
@@ -182,11 +183,15 @@ def train_model(train_dataloader, dev_dataloader, args):
         "loss" : []
     }
 
+    loss_fn = args.loss
+    optimizer = args.optimizer(model.parameters(), lr=args.lr)
+    scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=5e-4, steps_per_epoch=len(train_dataloader), epochs=args.num_epochs)
+
     for epoch in range(args.num_epochs):
         print("Epoch = ", str(epoch + 1))
         for mode, data_loader in [('Train', train_dataloader)]:#,('Dev', dev_dataloader)]:
             print(mode, " for epoch ", str(epoch + 1))
-            preds, targets, loss = run_epoch(model, data_loader, mode, args)
+            preds, targets, loss = run_epoch(model, loss_fn, optimizer, scheduler, data_loader, mode, args)
             epoch_eval = eval(preds, targets, args.is_multilabel)
             evals[mode].append(epoch_eval)
             if mode == 'Train': 
@@ -195,6 +200,8 @@ def train_model(train_dataloader, dev_dataloader, args):
             print(mode + "_AUPRC at epoch ", str(epoch + 1), " = ", epoch_eval["auprc"])
             print(mode + "_MCC at epoch ", str(epoch + 1), " = ", epoch_eval["mcc"])
             print(mode + "_Loss at epoch ", str(epoch + 1), " = ", loss)
+            current_lr = optimizer.param_groups[0]['lr']
+            print(mode + "_learning_Rate at epoch ", str(epoch + 1), " = ", current_lr)
             if mode == "Train" and loss < 0.01:
                 break;
             print("--------------------------------------------------------------------------")
