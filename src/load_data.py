@@ -28,15 +28,16 @@ def encode_and_fix(seq, max_len=1024):
     return torch.tensor(encoded, dtype=torch.long)
 
 class ProteinDataset(Dataset):
-    def __init__(self, df, label_cols, seq_col="Sequence"):
+    def __init__(self, df, label_cols, seq_col="Sequence", max_len=1024):
         self.sequences = df[seq_col].tolist()
         self.labels = df[label_cols].values.astype("float32")
+        self.length = max_len
         
     def __len__(self):
         return len(self.sequences)
 
     def __getitem__(self, idx):
-        seq_encoded = encode_and_fix(self.sequences[idx])
+        seq_encoded = encode_and_fix(self.sequences[idx], max_len=self.length)
         label = torch.tensor(self.labels[idx], dtype=torch.float32)
         return seq_encoded, label
 

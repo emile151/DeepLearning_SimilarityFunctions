@@ -18,12 +18,12 @@ from argparse import Namespace
 # -----------------------------
 # CONFIG
 # -----------------------------
-MAX_LEN = 1024
+MAX_LEN = 128
 BATCH_SIZE = 32
 EPOCHS = 50
 LR = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EXPERIMENT_NAME = "dot_prod_mean"
+EXPERIMENT_NAME = "signalP_dot_prod_mean"
 MODEL_CHECKPOINT = f"./model/{EXPERIMENT_NAME}_checkpoint.pt"
 BEST_MODEL_PATH = f"./model/{EXPERIMENT_NAME}_best_model.pt"
 PATIENCE = 5  # early stopping patience
@@ -207,16 +207,12 @@ def main():
     # -----------------------------
     # Load data
     # -----------------------------
-    df = pd.read_csv("data/Swissprot_Train_Validation_dataset_clean.csv")
+    df = pd.read_csv("data/dataset_clean.csv")
 
     # The one-hot columns (based on your table)
-    label_cols = [
-        "Membrane", "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane",
-        "Mitochondrion", "Plastid", "Endoplasmic reticulum", "Lysosome/Vacuole",
-        "Golgi apparatus", "Peroxisome"
-    ]
+    label_cols = ['NO_S', 'LIP', 'S', 'TATLIP', 'PILI', 'TA']
 
-    analyze_dataset(df, label_cols=label_cols)
+    analyze_dataset(df, label_cols=label_cols, sequence_col='sequence')
 
     # First, split off test set (~10-20%)
     train_val_df, test_df = train_test_split(df, test_size=0.1, random_state=42, shuffle=True)
@@ -226,9 +222,9 @@ def main():
 
     print(f"Train: {len(train_df)}, Val: {len(val_df)}, Test: {len(test_df)}")
 
-    train_dataset = ProteinDataset(train_df, label_cols)
-    val_dataset = ProteinDataset(val_df, label_cols)
-    test_dataset = ProteinDataset(test_df, label_cols)
+    train_dataset = ProteinDataset(train_df, label_cols, seq_col="sequence", max_len=MAX_LEN)
+    val_dataset = ProteinDataset(val_df, label_cols, seq_col="sequence", max_len=MAX_LEN)
+    test_dataset = ProteinDataset(test_df, label_cols, seq_col="sequence", max_len=MAX_LEN)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
@@ -238,9 +234,9 @@ def main():
         "max_len" : MAX_LEN,
         "vocab_size": 23,
         "num_classes" : len(label_cols),
-        "num_heads" : 8,
-        "num_layers" : 6,
-        "embed_dim" : 128,
+        "num_heads" : 16,
+        "num_layers" : 8,
+        "embed_dim" : 256,
         "attention_fn" : None,
         "Classifier" : classifier.LinearClassifier,
         "classifier_reduction" : "mean"
