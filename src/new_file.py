@@ -23,7 +23,7 @@ BATCH_SIZE = 32
 EPOCHS = 50
 LR = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EXPERIMENT_NAME = "signalP_dot_prod_mean"
+EXPERIMENT_NAME = "signalP_rbf_mean"
 MODEL_CHECKPOINT = f"./model/{EXPERIMENT_NAME}_checkpoint.pt"
 BEST_MODEL_PATH = f"./model/{EXPERIMENT_NAME}_best_model.pt"
 PATIENCE = 5  # early stopping patience
@@ -237,7 +237,7 @@ def main():
         "num_heads" : 16,
         "num_layers" : 8,
         "embed_dim" : 256,
-        "attention_fn" : None,
+        "attention_fn" : 'rbf',
         "Classifier" : classifier.LinearClassifier,
         "classifier_reduction" : "mean"
     }

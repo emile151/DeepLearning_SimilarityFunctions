@@ -59,9 +59,11 @@ class MultiHeadedAttention(nn.Module):
         #####
 
         if mask is not None:
+            mask = mask[:, None, None, :]  # [B, 1, 1, T]
             scores = scores.masked_fill(mask == 0, float('-inf'))
         attn_weights = F.softmax(scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
+        
         out = attn_weights @ value
         return out
 
