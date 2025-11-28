@@ -27,7 +27,7 @@ class MultiHeadedAttention(nn.Module):
         # Custom Attention function
 
         if attn_fn == 'rbf':
-            self.gamma = nn.Parameter(torch.tensor(0.2))
+            self.log_gamma = nn.Parameter(torch.zeros(num_heads))
             self.attn_fn = self.rbf_attention
         else:
             self.attn_fn = self.dot_prod_attention
@@ -49,18 +49,18 @@ class MultiHeadedAttention(nn.Module):
         return out
     
     def rbf_attention(self, query, key, value, mask , dropout=None):
-        d_k = query.size(-1)
-        q_exp = query.unsqueeze(3)   # (B, H, Tq, 1, d_k)
-        k_exp = key.unsqueeze(2)     # (B, H, 1, Tk, d_k)
-        ##### To be changed in each attention function
-        dist = (q_exp - k_exp).pow(2).sum(-1)   # (B, H, Tq, Tk)
-        rbf = torch.exp(-dist / self.gamma)   # (B, C)
-        scores = rbf  / math.sqrt(d_k)
-        #####
+        # query, key, value shapes: (batch, heads, seqlen, dim)
+        sigma = torch.exp(self.log_sigma).view(1, self.num_heads, 1, 1)
+
+        diff = query.unsqueeze(3) - key.unsqueeze(2)
+        dist_sq = (diff ** 2).sum(-1)
+
+        score = torch.exp(-dist_sq / (2 * sigma ** 2))
 
         if mask is not None:
             mask = mask[:, None, None, :]  # [B, 1, 1, T]
             scores = scores.masked_fill(mask == 0, float('-inf'))
+
         attn_weights = F.softmax(scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
         
