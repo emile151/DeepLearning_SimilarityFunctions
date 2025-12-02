@@ -74,7 +74,7 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
 # -----------------------------
 # Training loop with early stopping
 # -----------------------------
-def train_model(model, train_loader, val_loader, criterion, optimizer, warmup_scheduler, plateau_scheduler,
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
                 start_epoch=0, epochs=50, patience=5, label_cols=None):
 
     model.to(DEVICE)
@@ -96,16 +96,19 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, warmup_sc
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
             global_step += 1
             total_loss += loss.item()
 
             # Warmup step
+            scheduler.step()
+            """
             if global_step <= warmup_scheduler.warmup_steps:
                 warmup_scheduler.step()
                 current_lr = warmup_scheduler.get_last_lr()[0]
             else:
                 current_lr = optimizer.param_groups[0]["lr"]
+            """
+            current_lr = optimizer.param_groups[0]['lr']
 
             # Update tqdm postfix with current loss
             train_loop.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -159,19 +162,21 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, warmup_sc
         # -----------------------------
         # Learning Rate Scheduling
         # -----------------------------
+        """
         if global_step > warmup_scheduler.warmup_steps:
             plateau_scheduler.step(macro_f1)
             print("Plateau LR:", optimizer.param_groups[0]["lr"])
         else:
             print("Warmup LR:", optimizer.param_groups[0]["lr"])
-
+        """
         # Save checkpoint every epoch
         checkpoint = {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "warmup_scheduler_state_dict": warmup_scheduler.state_dict(),
-            "plateau_scheduler_state_dict": plateau_scheduler.state_dict(),
+            "scheduler_state_dict" : scheduler.state_dict(),
+            #"warmup_scheduler_state_dict": warmup_scheduler.state_dict(),
+            #"plateau_scheduler_state_dict": plateau_scheduler.state_dict(),
             "best_macro_f1": best_f1
         }
         torch.save(checkpoint, MODEL_CHECKPOINT)
@@ -234,12 +239,13 @@ def main():
         "max_len" : MAX_LEN,
         "vocab_size": 23,
         "num_classes" : len(label_cols),
-        "num_heads" : 16,
-        "num_layers" : 8,
-        "embed_dim" : 256,
-        "attention_fn" : 'rbf',
+        "num_heads" : 4,
+        "num_layers" : 2,
+        "embed_dim" : 128,
+        "attention_fn" : None,
         "Classifier" : classifier.LinearClassifier,
-        "classifier_reduction" : "mean"
+        "classifier_reduction" : "mean",
+        "epochs" : 100
     }
 
     args = Namespace(**args)
@@ -261,6 +267,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
     # Scheduler config
+    """
     warmup_steps = 3000
 
     warmup_scheduler = WarmupScheduler(optimizer, warmup_steps=warmup_steps)
@@ -268,7 +275,8 @@ def main():
     plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='max', factor=0.5, patience=2
     )
-
+    """
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=5e-4, steps_per_epoch=len(train_loader), epochs=args.num_epochs)
     if False:
         model, optimizer, scheduler, start_epoch, best_f1 = load_checkpoint(
         model, optimizer, scheduler, checkpoint_path=MODEL_CHECKPOINT
@@ -276,8 +284,8 @@ def main():
 
     print(f"Found {DEVICE} for training!")
 
-    train_model(model, train_loader, val_loader, criterion, optimizer, warmup_scheduler, plateau_scheduler,
-            epochs=100, patience=5, label_cols=label_cols)
+    train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
+            epochs=args.epochs, patience=5, label_cols=label_cols)
 
 if __name__ == "__main__":
     main()

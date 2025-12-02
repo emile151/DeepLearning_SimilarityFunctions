@@ -10,9 +10,15 @@ import matplotlib.patches as mpatches
 
 
 def evaluation_plots(data, kernel, label_cols):
-    all_labels = data["labels"]
+    all_labels = data["all_labels"].squeeze(1)
     all_preds = data["predictions"]
-    all_emb = data["embeddings"]
+    all_preds = torch.softmax(data["predictions"], dim=1).cpu()
+    all_emb = data["embeddings"].cpu().detach().numpy()
+    print(all_labels.shape)
+    all_labels_int = data["all_labels"].squeeze(1).cpu() # shape (N,)
+
+    all_labels_int = all_labels_int.numpy()
+    all_labels = torch.nn.functional.one_hot(all_labels, num_classes=6)
     values, counts = torch.unique(all_labels, return_counts=True)
     print(counts)
     true_predicted = [0,0,0,0,0,0]
@@ -106,9 +112,10 @@ def evaluation_plots(data, kernel, label_cols):
     labels_int = labels.argmax(axis=1)  
     T = find_temperature(logits, labels_int)
     print("Optimal T:", T)
-
+    all_labels = all_labels.cpu().numpy()
     temp_preds = softmax(logits / T)
     for i in range(6):
+        #y_true = (all_labels == i).astype(int)
         prob_true, prob_pred = calibration_curve(
             all_labels[:, i], temp_preds[:, i], n_bins=10
         )
