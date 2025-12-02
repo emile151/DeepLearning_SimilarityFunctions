@@ -27,7 +27,7 @@ class MultiHeadedAttention(nn.Module):
         # Custom Attention function
 
         if attn_fn == 'rbf':
-            self.log_gamma = nn.Parameter(torch.zeros(num_heads))
+            self.log_sigma = nn.Parameter(torch.zeros(num_heads))
             self.attn_fn = self.rbf_attention
         else:
             self.attn_fn = self.dot_prod_attention
@@ -55,7 +55,7 @@ class MultiHeadedAttention(nn.Module):
         diff = query.unsqueeze(3) - key.unsqueeze(2)
         dist_sq = (diff ** 2).sum(-1)
 
-        score = torch.exp(-dist_sq / (2 * sigma ** 2))
+        scores = torch.exp(-dist_sq / (2 * sigma ** 2))
 
         if mask is not None:
             mask = mask[:, None, None, :]  # [B, 1, 1, T]
