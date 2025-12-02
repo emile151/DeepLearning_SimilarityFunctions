@@ -89,6 +89,7 @@ def create_pandas_df_from_path(path_to_dataset):
 def get_dataloaders(path_to_data, batch_size = 32, max_len = 72, is_multilabel = False, exclude_class = [], use_sample_weights = True):
     if is_multilabel:
         df = pd.read_csv(path_to_data)
+        df = df[df['sequence'].str.len() <= 100]
         df["class_ints"] = list(df.iloc[:, 4:15].values)
         train_df = df[df["split_group"] == "train"].reset_index(drop=True)
         dev_df   = df[df["split_group"] == "dev"].reset_index(drop=True)

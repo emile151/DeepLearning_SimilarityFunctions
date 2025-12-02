@@ -5,6 +5,9 @@ import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 import sys
 sys.path.append("src")
@@ -29,7 +32,7 @@ dropout = 0
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 args = {
-            "max_len" : 300,
+            "max_len" : 72,
             "vocab_size": 26,
             "num_classes" : 10,
             "num_heads" : 8,
@@ -55,10 +58,10 @@ args = {
 
 args = Namespace(**args)
 
-path_to_data = "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/data/protein_struct_classification.csv"
+path_to_data = "/zhome/01/3/213912/DeepLearning_SimilarityFunctions/data/protein_struct_classification.csv"
 batch_size = 32
 
-model = torch.load('/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/results/prtstruct_rbf_attn.pth', weights_only = False, map_location=torch.device('cpu'))
+model = torch.load('/zhome/01/3/213912/DeepLearning_SimilarityFunctions/results/prtstrct_linear_attn.pth', weights_only = False, map_location=torch.device('cpu'))
 train_dataloader, dev_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, args.max_len, args.is_multilabel, args.exclude_class, use_sample_weights = False)
 
 del train_dataloader
@@ -90,3 +93,62 @@ ax = fig.add_subplot(projection='3d')
 ax.scatter(embeds_pca[:,1], embeds_pca[:,2], embeds_pca[:,0], c = targets, cmap = "tab10" )
 plt.legend()
 plt.show()
+
+Xn = embeds / np.linalg.norm(embeds, axis = 1, keepdims= True)
+Xp = PCA(n_components=50).fit_transform(Xn)
+Xt = TSNE(n_components=2, metric='cosine', perplexity=30).fit_transform(Xp)
+
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xp[:,0], Xp[:,1], Xp[:,2], c = targets, cmap = "tab10" )
+ax.set_title("normalized PCA")
+plt.legend()
+plt.show()
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xp[:,2], Xp[:,0], Xp[:,1], c = targets, cmap = "tab10" )
+ax.set_title("normalized PCA")
+plt.legend()
+plt.show()
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xp[:,1], Xp[:,2], Xp[:,0], c = targets, cmap = "tab10" )
+ax.set_title("normalized PCA")
+plt.legend()
+plt.show()
+
+plt.scatter(Xt[:,0], Xt[:,1], c = targets, cmap = "tab10")
+plt.title("Normalized tSNE")
+plt.show()
+
+
+
+Xc = Xn - Xn.mean(axis = 0, keepdims = True)
+Xp = PCA(n_components=50).fit_transform(Xc)
+Xt = TSNE(n_components=2, metric='cosine', perplexity=30).fit_transform(Xp)
+
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xp[:,0], Xp[:,1], Xp[:,2], c = targets, cmap = "tab10" )
+ax.set_title("mean centered PCA")
+plt.legend()
+plt.show()
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xp[:,2], Xp[:,0], Xp[:,1], c = targets, cmap = "tab10" )
+ax.set_title("mean centered PCA")
+plt.legend()
+plt.show()
+fig = plt.figure()
+ax = fig.add_subplot(projection='3d')
+ax.scatter(Xp[:,1], Xp[:,2], Xp[:,0], c = targets, cmap = "tab10" )
+ax.set_title("mean centered PCA")
+plt.legend()
+plt.show()
+
+plt.scatter(Xt[:,0], Xt[:,1], c = targets, cmap = "tab10")
+plt.title("mean centered tSNE")
+plt.show()
+
+
+

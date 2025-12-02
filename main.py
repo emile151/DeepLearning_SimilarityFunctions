@@ -21,9 +21,9 @@ def main():
     # num_classes = 11
     # is_multilabel = True
     args = {
-            "max_len" : 300,
+            "max_len" : 72,
             "vocab_size": 26,
-            "num_classes" : 10,
+            "num_classes" : 6,
             "num_heads" : 1,
             "num_layers" : 2,
             "embed_dim" : 4,
@@ -33,10 +33,10 @@ def main():
             "loss" : F.cross_entropy,
             "optimizer" : torch.optim.Adam,
             "lr" : 1e-4,
-            "num_epochs" : 20,
+            "num_epochs" : 1,
             "device" : device,
             "output_dir" : "results/",
-            "experiment_title" : "test_prtstruct",
+            "experiment_title" : "test_scripts",
             "classifier_reduction" : "mean",
             "exclude_class" : [],
             "is_multilabel": False
@@ -44,13 +44,13 @@ def main():
 
     args = Namespace(**args)
 
-    path_to_data = "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/data/protein_struct_classification.csv"
+    path_to_data = "/home/emile/PythonProjects/DeepLearning_SimilarityFunctions/data/dataset.csv"
     batch_size = 32
 
     print(f"Train on device: {device}")
     train_dataloader, dev_dataloader, test_dataloader = dataset.get_dataloaders(path_to_data, batch_size, args.max_len, args.is_multilabel, args.exclude_class, use_sample_weights = False)
     model, evals = train.train_model(train_dataloader, dev_dataloader, args)
-    preds, targets = train.test_model(model, test_dataloader, args)
+    preds, targets, embeds = train.test_model(model, test_dataloader, args)
 
 
 

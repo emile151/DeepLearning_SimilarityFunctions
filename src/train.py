@@ -36,7 +36,13 @@ class SignalP(nn.Module):
         return logits
     def forward_encode(self, tokens):
         x = self.transformer(tokens)
-        return x
+        if self.args.classifier_reduction == "mean":
+            clf_x = torch.mean(x, dim = 1)
+        else:
+            clf_x = x[:,0,:]
+
+        logits = self.classifier(clf_x)
+        return logits, clf_x
     
     def forward_idx(self, tokens, idx):
         x = self.transformer.forward_block(tokens, idx)
@@ -72,7 +78,7 @@ def run_epoch(model,loss_fn,data_loader, mode, args, optimizer = None, scheduler
 
     return torch.cat(preds, dim=0), torch.cat(targets, dim=0), np.mean(losses)
 
-def run_epoch_embed(model, data_loader, mode, args):
+def run_epoch_embed(model, loss_fn, data_loader, mode, args):
     tqdm_bar = tqdm(data_loader, total=len(data_loader))
     model.eval()
     batch_loss = 0
@@ -80,14 +86,18 @@ def run_epoch_embed(model, data_loader, mode, args):
     preds = []
     targets = []
     losses = []
+    embeds = []
     for batch, (inputs, batch_targets) in enumerate(data_loader):
         inputs, batch_targets = inputs.to(args.device), batch_targets.to(args.device)
-        batch_preds = model.forward_encode(inputs)
+        batch_preds, batch_embeds = model.forward_encode(inputs)
+        loss = loss_fn(batch_preds, batch_targets)
         preds.append(batch_preds.detach().cpu())
         targets.append(batch_targets.detach().cpu())
+        embeds.append(batch_embeds.detach().cpu())
+        losses.append(loss.item())
         tqdm_bar.update()
 
-    return torch.cat(preds, dim=0), torch.cat(targets, dim=0)
+    return torch.cat(preds, dim=0), torch.cat(targets, dim=0), torch.cat(embeds, dim = 0), np.mean(losses)
 
 def run_epoch_idx(model, data_loader, args, idx):
     tqdm_bar = tqdm(data_loader, total=len(data_loader))
@@ -187,10 +197,12 @@ def train_model(train_dataloader, dev_dataloader, args):
     loss_fn = args.loss
     optimizer = args.optimizer(model.parameters(), lr=args.lr)
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=5e-4, steps_per_epoch=len(train_dataloader), epochs=args.num_epochs)
+    last_loss = 10000
+    no_impr = 0
 
     for epoch in range(args.num_epochs):
         print("Epoch = ", str(epoch + 1))
-        for mode, data_loader in [('Train', train_dataloader)]:#,('Dev', dev_dataloader)]:
+        for mode, data_loader in [('Train', train_dataloader),('Dev', dev_dataloader)]:
             print(mode, " for epoch ", str(epoch + 1))
             preds, targets, loss = run_epoch(model = model, loss_fn = loss_fn,optimizer =  optimizer, scheduler = scheduler,data_loader = data_loader, mode = mode, args = args)
             epoch_eval = eval(preds, targets, args.is_multilabel)
@@ -203,14 +215,22 @@ def train_model(train_dataloader, dev_dataloader, args):
             print(mode + "_Loss at epoch ", str(epoch + 1), " = ", loss)
             current_lr = optimizer.param_groups[0]['lr']
             print(mode + "_learning_Rate at epoch ", str(epoch + 1), " = ", current_lr)
-            if mode == "Train" and loss < 0.01:
-                break;
+            if mode == "Dev":
+                if loss > last_loss:
+                    if no_impr >= 5:
+                        print("Early Stopping because of no improvement")
+                        break;
+                    else:
+                        no_impr += 1
+                else:
+                    no_impor = 0
+                last_loss = loss
             print("--------------------------------------------------------------------------")
         torch.save(model, path_to_model)
     return model, evals
 
 def test_model(model, test_dataloader, args):
-    preds, targets, loss = run_epoch(model = model, loss_fn = args.loss, data_loader = test_dataloader, mode = 'Test', args = args)
+    preds, targets, embeds, loss = run_epoch_embed(model = model, loss_fn = args.loss, data_loader = test_dataloader, mode = 'Test', args = args)
 
     test_eval = eval(preds, targets, args.is_multilabel)
     print("Test AUROC at epoch " , test_eval["auroc"])
@@ -218,7 +238,7 @@ def test_model(model, test_dataloader, args):
     print("MCC at epoch ", test_eval["mcc"])
     print("Loss at epoch ", loss)
     print("--------------------------------------------------------------------------")
-    return preds, targets
+    return preds, targets, embeds
 
 def test_model_embed(model, test_dataloader, args):
     preds, targets = run_epoch_embed(model, test_dataloader, 'Test', args)
