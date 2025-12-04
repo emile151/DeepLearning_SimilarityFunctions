@@ -1,7 +1,7 @@
 from sklearn.metrics import roc_curve,auc
 from sklearn.calibration import calibration_curve
 from scipy.optimize import minimize
-from sklearn.metrics import brier_score_loss, log_loss
+from sklearn.metrics import brier_score_loss, log_loss, matthews_corrcoef
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import torch
@@ -36,6 +36,36 @@ def evaluation_plots(data, kernel, label_cols):
     colors = plt.cm.viridis(np.linspace(0, 1, 6))
     plt.bar(x = label_cols, height = np.array(true_predicted) / (np.array(false_predicted) + np.array(true_predicted)), color = colors)
     plt.title(kernel + " Class accuracies")
+    plt.show()
+
+    num_classes = all_preds.shape[1]
+
+    per_class_mcc = []
+
+    for cls in range(num_classes):
+        y_true_binary = []
+        y_pred_binary = []
+
+        for pred, lab in zip(all_preds, all_labels):
+            p = np.argmax(pred)
+            l = np.argmax(lab)
+
+            y_pred_binary.append(1 if p == cls else 0)
+            y_true_binary.append(1 if l == cls else 0)
+
+        mcc = matthews_corrcoef(y_true_binary, y_pred_binary)
+        per_class_mcc.append(mcc)
+
+    per_class_mcc = np.array(per_class_mcc)
+
+    print("Per-class MCC:", per_class_mcc)
+    print("Mean MCC:", np.mean(per_class_mcc))
+
+    colors = plt.cm.viridis(np.linspace(0, 1, num_classes))
+    plt.bar(x=label_cols, height=per_class_mcc, color=colors)
+    plt.title("Per-class MCC")
+    plt.ylim(0.0,1.0)
+    plt.ylabel("MCC")
     plt.show()
 
     fpr = {}

@@ -217,13 +217,14 @@ def train_model(train_dataloader, dev_dataloader, args):
             print(mode + "_learning_Rate at epoch ", str(epoch + 1), " = ", current_lr)
             if mode == "Dev":
                 if loss > last_loss:
-                    if no_impr >= 5:
+                    if no_impr >= 10:
                         print("Early Stopping because of no improvement")
+                        return model, evals
                         break;
                     else:
                         no_impr += 1
                 else:
-                    no_impor = 0
+                    no_impr = 0
                 last_loss = loss
             print("--------------------------------------------------------------------------")
         torch.save(model, path_to_model)
